@@ -1,0 +1,358 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{lmodern}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+
+\geometry{margin=2.5cm}
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0.25em}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!45!black,
+    urlcolor=blue!45!black,
+    citecolor=blue!45!black
+}
+
+\title{Agrupamento de Dados com BSAS, K-Means, Janelas de Parzen e KNN}
+\author{Caique}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Este relatorio apresenta tres propostas de agrupamento aplicadas aos conjuntos
+Iris e Wine. A primeira combina o metodo BSAS com K-Means: o BSAS e utilizado
+para estimar o numero de agrupamentos por meio da analise da curva
+$k(\tau)$, enquanto o K-Means realiza o particionamento final. A segunda
+proposta usa Janelas de Parzen para estimar a densidade dos dados e formar
+grupos a partir de modos de densidade. A terceira proposta usa KNN por meio de
+um grafo de vizinhos compartilhados. Os resultados sao avaliados de forma
+qualitativa por visualizacoes em PCA 2D e comparacao com as classes esperadas,
+com metricas externas e internas usadas apenas como apoio.
+\end{abstract}
+
+\section{Introducao}
+
+O objetivo da atividade e implementar e comparar procedimentos de agrupamento
+nao supervisionado em dois conjuntos classicos: Iris Dataset e Wine Dataset.
+Embora ambos possuam rotulos conhecidos, esses rotulos nao sao usados no
+treinamento dos metodos. Eles servem apenas para avaliacao qualitativa posterior,
+permitindo comparar os agrupamentos encontrados com as classes esperadas.
+
+Foram implementadas tres abordagens. Na primeira, o BSAS
+(\textit{Basic Sequential Algorithmic Scheme}) estima o numero de grupos
+presentes nos dados. Em seguida, esse numero e passado ao K-Means, que executa o
+particionamento efetivo. Na segunda abordagem, Janelas de Parzen sao usadas para
+estimar uma funcao de densidade, e os grupos sao definidos a partir de regioes
+que convergem para o mesmo modo dessa densidade. Na terceira abordagem, um grafo
+KNN e construido usando vizinhos compartilhados, e os grupos sao obtidos como
+componentes conexas desse grafo.
+
+\section{Pre-processamento}
+
+Antes da aplicacao dos metodos, os dados foram padronizados com
+\texttt{StandardScaler}. Assim, cada atributo passa a ter media aproximadamente
+zero e desvio-padrao aproximadamente igual a um. Esse pre-processamento e
+necessario porque todos os metodos implementados dependem de distancias:
+BSAS, K-Means, Janelas de Parzen e KNN.
+
+Sem padronizacao, atributos com maior escala numerica poderiam dominar o calculo
+das distancias. Isso seria especialmente problematico no Wine Dataset, pois seus
+atributos possuem unidades e amplitudes muito diferentes. Dessa forma, a
+padronizacao torna a contribuicao dos atributos mais equilibrada e evita que o
+resultado do agrupamento seja determinado artificialmente por uma diferenca de
+escala.
+
+Para visualizacao, tambem foi utilizada PCA com duas componentes principais. A
+PCA nao foi usada como entrada principal dos algoritmos de agrupamento; ela foi
+empregada apenas para projetar os dados em duas dimensoes e permitir uma analise
+visual dos grupos encontrados.
+
+\section{Metodologia}
+
+\subsection{BSAS para estimar o numero de grupos}
+
+O BSAS e um metodo sequencial. A cada novo ponto, calcula-se a distancia entre
+esse ponto e os representantes dos grupos ja existentes. Se a menor distancia
+for menor ou igual a um limiar $\tau$, o ponto e inserido no grupo mais proximo.
+Caso contrario, um novo grupo e criado. Assim, $\tau$ controla diretamente o
+numero de grupos obtidos.
+
+Valores pequenos de $\tau$ tendem a gerar muitos grupos, pois poucos pontos sao
+considerados suficientemente proximos dos grupos existentes. Valores grandes de
+$\tau$ tendem a gerar poucos grupos, pois muitos pontos passam a ser aceitos em
+grupos ja existentes. No notebook, esse comportamento e estudado pela curva
+$k(\tau)$, em que $k$ representa o numero de grupos retornado pelo BSAS para
+cada valor de $\tau$.
+
+Como o BSAS e sensivel a ordem de apresentacao dos dados, cada valor de $\tau$
+foi avaliado varias vezes com embaralhamentos diferentes. Em seguida, foi usada
+a mediana do numero de grupos obtidos. Essa estrategia reduz o efeito de uma
+ordem especifica dos dados e torna a estimativa de $k$ mais estavel.
+
+A escolha de $k$ foi feita procurando regioes de estabilidade na curva
+$k(\tau)$. Numericamente, foi calculada uma aproximacao da derivada:
+
+\begin{equation}
+    \frac{dk}{d\tau} \approx \nabla k(\tau).
+\end{equation}
+
+Regioes em que $|dk/d\tau|$ e pequeno indicam que mudancas em $\tau$ alteram
+pouco o numero de grupos. Essas regioes foram interpretadas como plateaus de
+estabilidade. Por outro lado, regioes com derivada alta indicam transicoes
+bruscas, nas quais pequenas variacoes no limiar mudam bastante o agrupamento.
+
+\subsection{K-Means como particionador final}
+
+Apos estimar o numero de grupos com o BSAS, o K-Means foi executado com
+\texttt{n\_clusters = k}. Essa combinacao separa dois papeis: o BSAS e usado
+como estimador do hiperparametro $k$, e o K-Means e responsavel pelo
+particionamento final.
+
+Essa proposta e interessante porque o K-Means normalmente exige que o usuario
+defina previamente o numero de grupos. O BSAS fornece uma forma automatizada e
+interpretavel de sugerir esse valor a partir da propria estrutura dos dados.
+
+\subsection{Agrupamento por Janelas de Parzen}
+
+Na segunda proposta, foi estimada uma densidade por Janelas de Parzen com kernel
+Gaussiano. Para um ponto $x$, a densidade estimada pode ser escrita como:
+
+\begin{equation}
+    \hat{p}(x) =
+    \frac{1}{n}
+    \sum_{i=1}^{n}
+    \exp\left(
+        -\frac{\lVert x - x_i \rVert^2}{2h^2}
+    \right),
+\end{equation}
+
+em que $h$ e a largura da janela, tambem chamada de \textit{bandwidth}. A ideia
+implementada foi deslocar cada ponto em direcao a regioes de maior densidade,
+por meio de uma media ponderada pelos pesos do kernel Gaussiano. Pontos que
+convergem para modos proximos da densidade recebem o mesmo rotulo.
+
+Esse procedimento e semelhante em espirito ao Mean Shift, mas foi implementado
+explicitamente a partir da estimativa de densidade de Parzen. Alem dos graficos
+dos agrupamentos, o notebook tambem exibe um mapa de contorno da densidade
+estimada no plano PCA 2D, permitindo observar visualmente os picos de densidade
+e sua relacao com os grupos formados.
+
+\subsection{Agrupamento por KNN com vizinhos compartilhados}
+
+Na terceira proposta, foi construido um grafo baseado em KNN. Cada amostra e
+representada por um vertice. Dois vertices sao conectados quando satisfazem dois
+criterios: eles aparecem como vizinhos mutuos e possuem um numero minimo de
+vizinhos compartilhados. Depois disso, os clusters sao definidos como
+componentes conexas do grafo.
+
+Essa abordagem e inspirada na ideia de que pontos pertencentes ao mesmo grupo
+nao estao apenas proximos, mas tambem compartilham uma vizinhanca local
+semelhante. Isso evita algumas conexoes fracas que poderiam surgir quando se usa
+apenas a distancia direta entre pares de pontos.
+
+\section{Avaliacao qualitativa}
+
+A avaliacao foi feita principalmente por visualizacao. Para cada dataset, o
+notebook gera graficos em PCA 2D comparando:
+
+\begin{itemize}[leftmargin=1.5cm]
+    \item as classes esperadas;
+    \item os grupos obtidos por BSAS seguido de K-Means;
+    \item os grupos obtidos por Janelas de Parzen;
+    \item os grupos obtidos pelo metodo KNN com vizinhos compartilhados.
+\end{itemize}
+
+Tambem sao exibidas metricas de apoio: ARI, NMI e Silhouette. ARI e NMI comparam
+os agrupamentos com os rotulos conhecidos, enquanto a Silhouette avalia a
+separacao e coesao dos grupos sem usar os rotulos verdadeiros. Como a proposta
+da atividade enfatiza avaliacao qualitativa, essas metricas devem ser lidas
+apenas como complemento as visualizacoes.
+
+\section{Discussao dos resultados}
+
+\subsection{Iris Dataset}
+
+No Iris Dataset, espera-se que uma das classes seja visualmente mais separavel,
+enquanto as outras duas apresentem sobreposicao parcial. Esse comportamento e
+conhecido no conjunto Iris: a classe Setosa costuma ser bem separada, enquanto
+Versicolor e Virginica tendem a ocupar regioes mais proximas no espaco de
+atributos.
+
+Na abordagem BSAS seguido de K-Means, quando o valor estimado de $k$ se aproxima
+do numero esperado de classes, o resultado tende a refletir bem essa estrutura:
+um grupo mais isolado e dois grupos com fronteira menos evidente. Entretanto, a
+qualidade do resultado depende da estabilidade do plateau escolhido em
+$k(\tau)$. Se a curva apresentar varios plateaus plausiveis, a escolha de $k$
+pode mudar dependendo da faixa de $\tau$ analisada.
+
+No metodo por Janelas de Parzen, a interpretacao visual da densidade e
+particularmente util. Picos de densidade bem separados tendem a corresponder a
+grupos mais claros. No caso do Iris, a sobreposicao entre duas classes pode
+fazer com que a densidade apresente modos proximos ou ate mesmo um modo
+compartilhado, dependendo do \textit{bandwidth}. Assim, o metodo pode fundir
+grupos quando a janela e larga demais ou fragmentar grupos quando a janela e
+muito estreita.
+
+No metodo KNN com vizinhos compartilhados, a classe mais isolada tende a formar
+uma componente bem definida. Ja as classes parcialmente sobrepostas podem ser
+ligadas por arestas locais se compartilharem vizinhos suficientes. Portanto, a
+fronteira entre os dois grupos menos separados e bastante sensivel aos
+parametros $K$ e ao numero minimo de vizinhos compartilhados.
+
+\subsection{Wine Dataset}
+
+No Wine Dataset, a padronizacao e ainda mais importante, pois os atributos
+possuem escalas numericas muito diferentes. Apos esse pre-processamento, a PCA
+geralmente evidencia uma separacao razoavel entre as classes, embora algumas
+regioes possam permanecer proximas.
+
+A combinacao BSAS e K-Means tende a funcionar bem quando a curva $k(\tau)$
+apresenta um plateau associado a um numero de grupos compativel com a estrutura
+esperada. A vantagem dessa abordagem e a interpretabilidade da escolha de $k$:
+o grafico permite visualizar se o numero de grupos foi escolhido em uma regiao
+estavel ou em uma transicao abrupta.
+
+No caso do Parzen, a escolha da largura da janela tem impacto direto na
+resolucao da densidade. Como Wine possui mais atributos que Iris, a estimativa
+de densidade pode ser mais dificil devido ao aumento da dimensionalidade. Em
+dimensoes mais altas, os pontos tendem a ficar mais esparsos, o que torna a
+escolha do \textit{bandwidth} mais delicada.
+
+O metodo KNN com vizinhos compartilhados pode capturar estruturas locais
+interessantes, principalmente quando os grupos possuem densidades diferentes.
+Por outro lado, se $K$ for pequeno demais, o grafo pode se fragmentar em muitas
+componentes. Se $K$ for grande demais, regioes distintas podem ser conectadas,
+reduzindo a separacao entre grupos.
+
+\section{Sensibilidade a parametros}
+
+Os tres procedimentos possuem parametros importantes. A Tabela
+\ref{tab:parametros} resume os principais efeitos observados.
+
+\begin{table}[h]
+\centering
+\caption{Sensibilidade dos metodos aos principais parametros.}
+\label{tab:parametros}
+\begin{tabular}{lll}
+\toprule
+Metodo & Parametro & Efeito principal \\
+\midrule
+BSAS & $\tau$ & Controla a criacao de novos grupos. \\
+K-Means & $k$ & Define diretamente o numero de clusters finais. \\
+Parzen & $h$ & Controla a suavizacao da densidade estimada. \\
+KNN/SNN & $K$ & Controla o tamanho da vizinhanca local. \\
+KNN/SNN & vizinhos compartilhados & Controla a rigidez das conexoes do grafo. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+No BSAS, $\tau$ e o parametro mais critico. Valores baixos levam a muitos
+clusters; valores altos levam a poucos clusters. A estrategia de observar
+plateaus na curva $k(\tau)$ reduz essa arbitrariedade, mas nao elimina
+completamente a necessidade de julgamento.
+
+No K-Means, o parametro $k$ determina o numero final de grupos. Por isso, usar o
+BSAS como etapa anterior e uma forma de tornar a escolha mais fundamentada.
+Ainda assim, se o BSAS estimar um $k$ inadequado, o K-Means herdara essa
+limitacao.
+
+No Parzen, a largura da janela $h$ controla a suavidade da densidade. Um $h$
+muito pequeno gera muitos picos locais e pode fragmentar os dados. Um $h$ muito
+grande suaviza demais a densidade e pode unir grupos distintos.
+
+No KNN/SNN, $K$ e o numero minimo de vizinhos compartilhados controlam a
+conectividade do grafo. Parametros muito permissivos criam conexoes entre grupos
+distintos; parametros muito restritivos quebram grupos naturais em varias
+componentes pequenas.
+
+\section{Vantagens e desvantagens}
+
+\begin{table}[h]
+\centering
+\caption{Comparacao qualitativa das abordagens implementadas.}
+\label{tab:comparacao}
+\begin{tabular}{p{3cm}p{5.4cm}p{5.4cm}}
+\toprule
+Metodo & Vantagens & Desvantagens \\
+\midrule
+BSAS + K-Means
+& Estima automaticamente $k$; possui interpretacao visual pela curva
+$k(\tau)$; K-Means e simples e eficiente.
+& BSAS e sensivel a ordem dos dados; K-Means favorece grupos aproximadamente
+esfericos; resultado depende do plateau escolhido. \\
+\addlinespace
+Parzen
+& Relaciona agrupamentos a regioes de alta densidade; pode encontrar grupos
+sem impor diretamente um valor de $k$; densidade estimada e visualizavel.
+& Muito sensivel ao \textit{bandwidth}; sofre em dimensionalidade alta; pode
+fundir ou fragmentar grupos dependendo da suavizacao. \\
+\addlinespace
+KNN/SNN
+& Explora estrutura local; pode lidar melhor com formatos nao esfericos; evita
+algumas conexoes fracas usando vizinhos compartilhados.
+& Sensivel a $K$ e ao criterio de vizinhos compartilhados; pode gerar muitas
+componentes pequenas; custo de construir vizinhancas cresce com o numero de
+amostras. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Limitacoes}
+
+Uma limitacao geral e que as visualizacoes em PCA 2D mostram apenas uma
+projecao dos dados. Separacoes ou sobreposicoes vistas no grafico podem nao
+representar perfeitamente a geometria no espaco original. Portanto, os graficos
+devem ser interpretados como apoio qualitativo, nao como prova absoluta da
+estrutura dos grupos.
+
+Outra limitacao e a dependencia de parametros. Embora o notebook proponha regras
+automaticas ou semi-automaticas para definir alguns valores, ainda existe
+sensibilidade a escolhas como $\tau$, \textit{bandwidth}, $K$ e numero minimo de
+vizinhos compartilhados. Uma analise mais completa poderia testar grades de
+parametros e avaliar a estabilidade dos agrupamentos.
+
+O BSAS tambem apresenta dependencia da ordem dos dados. A implementacao reduz
+esse problema ao executar multiplos embaralhamentos e usar a mediana de $k$, mas
+isso nao remove totalmente a caracteristica sequencial do metodo.
+
+Por fim, os datasets Iris e Wine sao relativamente pequenos e bem conhecidos.
+Em bases maiores, com ruido, atributos irrelevantes ou estruturas mais
+complexas, o comportamento dos metodos pode ser diferente. Especialmente no
+caso de Parzen, a estimativa de densidade pode se tornar mais dificil em
+dimensoes elevadas.
+
+\section{Conclusao}
+
+A atividade mostrou que diferentes ideias de agrupamento enfatizam aspectos
+distintos dos dados. A combinacao BSAS + K-Means e uma alternativa util quando
+se deseja estimar o numero de clusters antes de aplicar um particionador
+classico. A analise da curva $k(\tau)$ e de sua derivada numerica fornece uma
+justificativa visual e quantitativa para a escolha de $k$.
+
+O metodo baseado em Janelas de Parzen oferece uma interpretacao por densidade:
+grupos sao associados a regioes de maior concentracao de pontos. Essa abordagem
+e intuitiva e visualmente rica, mas depende fortemente da largura da janela. O
+metodo KNN/SNN, por sua vez, modela a estrutura local dos dados por meio de um
+grafo, sendo interessante para identificar grupos conectados por vizinhancas
+semelhantes.
+
+Em termos praticos, nenhuma abordagem e universalmente superior. BSAS + K-Means
+e simples e eficiente, mas assume uma estrutura de grupos mais regular. Parzen e
+mais flexivel em termos de densidade, mas e sensivel a suavizacao. KNN/SNN
+captura relacoes locais, mas depende da conectividade do grafo. Assim, a melhor
+interpretacao dos resultados surge da combinacao entre visualizacao, metricas de
+apoio e analise critica da sensibilidade dos parametros.
+
+\end{document}
