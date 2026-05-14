@@ -1,0 +1,16 @@
+\babel@toc {brazilian}{}\relax 
+\contentsline {section}{\numberline {1}Objetivo da atividade}{2}{section.1}%
+\contentsline {section}{\numberline {2}Tópico 1 -- RBFNet com duplicatas}{2}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Problema numérico}{2}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Estratégia proposta}{2}{subsection.2.2}%
+\contentsline {subsection}{\numberline {2.3}Implementação}{2}{subsection.2.3}%
+\contentsline {section}{\numberline {3}Tópico 2 -- PolyMap-RBFNet-SVMLin}{2}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Etapas do método}{2}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Resumo da implementação}{3}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Resultados gráficos}{3}{subsection.3.3}%
+\contentsline {section}{\numberline {4}Tópico 3 -- Aplicação em Wine, Iris e base do Exercício 1}{5}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Objetivo}{5}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Heatmaps SVM-RBF}{5}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Heatmaps Poly-RBF-SVM}{7}{subsection.4.3}%
+\contentsline {section}{\numberline {5}Resultados e discussão}{8}{section.5}%
+\contentsline {section}{\numberline {6}Conclusão}{8}{section.6}%

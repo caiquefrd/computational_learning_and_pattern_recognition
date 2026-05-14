@@ -27,6 +27,7 @@
 
 # %%
 from collections import Counter
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -48,6 +49,13 @@ from sklearn.preprocessing import StandardScaler
 
 RANDOM_STATE = 42
 np.random.seed(RANDOM_STATE)
+
+ASSETS_DIR = Path("assets")
+PCA_SUPTITLE_FONTSIZE = 20
+PCA_TITLE_FONTSIZE = 16
+PCA_LABEL_FONTSIZE = 14
+PCA_TICK_FONTSIZE = 12
+PCA_LEGEND_FONTSIZE = 10
 
 plt.style.use("seaborn-v0_8-whitegrid")
 sns.set_context("notebook")
@@ -146,6 +154,11 @@ def clustering_report(X, y_true, labels_by_method):
     return pd.DataFrame(rows).sort_values("ARI vs classes", ascending=False).reset_index(drop=True)
 
 
+def save_figure(fig, filename):
+    ASSETS_DIR.mkdir(exist_ok=True)
+    fig.savefig(ASSETS_DIR / filename, dpi=220, bbox_inches="tight")
+
+
 def scatter_clusters(ax, Z, labels, title):
     labels = np.asarray(labels)
     unique = np.unique(labels)
@@ -157,7 +170,7 @@ def scatter_clusters(ax, Z, labels, title):
         ax.scatter(
             Z[mask, 0],
             Z[mask, 1],
-            s=48,
+            s=62,
             alpha=0.88,
             color=color,
             edgecolor="white",
@@ -165,11 +178,17 @@ def scatter_clusters(ax, Z, labels, title):
             label=str(lab),
         )
 
-    ax.set_title(title)
-    ax.set_xlabel("PC1")
-    ax.set_ylabel("PC2")
+    ax.set_title(title, fontsize=PCA_TITLE_FONTSIZE, pad=10)
+    ax.set_xlabel("PC1", fontsize=PCA_LABEL_FONTSIZE)
+    ax.set_ylabel("PC2", fontsize=PCA_LABEL_FONTSIZE)
+    ax.tick_params(axis="both", labelsize=PCA_TICK_FONTSIZE)
     if len(unique) <= 10:
-        ax.legend(title="rotulo", loc="best", fontsize=8, title_fontsize=8)
+        ax.legend(
+            title="rotulo",
+            loc="best",
+            fontsize=PCA_LEGEND_FONTSIZE,
+            title_fontsize=PCA_LEGEND_FONTSIZE,
+        )
 
 
 def plot_cluster_comparison(X, y_true, labels_by_method, dataset_name):
@@ -178,9 +197,19 @@ def plot_cluster_comparison(X, y_true, labels_by_method, dataset_name):
     explained = pca.explained_variance_ratio_.sum()
 
     ncols = len(labels_by_method) + 1
-    fig, axes = plt.subplots(1, ncols, figsize=(4.7 * ncols, 4.3), constrained_layout=True)
-    if ncols == 1:
-        axes = [axes]
+    if ncols <= 2:
+        nrows, grid_cols = 1, ncols
+        figsize = (5.8 * ncols, 5.2)
+    else:
+        grid_cols = 2
+        nrows = int(np.ceil(ncols / grid_cols))
+        figsize = (11.6, 5.4 * nrows)
+
+    fig, axes = plt.subplots(nrows, grid_cols, figsize=figsize, constrained_layout=True)
+    fig.set_constrained_layout_pads(w_pad=0.16, h_pad=0.22, wspace=0.12, hspace=0.16)
+    axes = np.atleast_1d(axes).ravel()
+    for ax in axes[ncols:]:
+        ax.set_visible(False)
 
     scatter_clusters(axes[0], Z, y_true, "Classes esperadas")
     for ax, (method, labels) in zip(axes[1:], labels_by_method.items()):
@@ -189,9 +218,9 @@ def plot_cluster_comparison(X, y_true, labels_by_method, dataset_name):
 
     fig.suptitle(
         f"{dataset_name}: comparacao em PCA 2D ({explained:.1%} da variancia)",
-        y=1.05,
-        fontsize=14,
+        fontsize=PCA_SUPTITLE_FONTSIZE,
     )
+    save_figure(fig, f"comparacao_{dataset_name.lower()}_pca.png")
     plt.show()
 
 
@@ -412,20 +441,23 @@ def plot_bsas_curve(curve, info, dataset_name):
     chosen = info["chosen"]
     k = info["k"]
 
-    fig, ax1 = plt.subplots(figsize=(8.8, 4.2))
+    fig, ax1 = plt.subplots(figsize=(9.2, 4.8))
     ax1.step(curve["tau"], curve["k_bsas"], where="mid", color="#1f77b4", linewidth=2)
     ax1.scatter(curve["tau"], curve["k_bsas"], color="#1f77b4", s=18)
     ax1.axhline(k, color="#d62728", linestyle="--", linewidth=1.5, label=f"k escolhido = {k}")
     ax1.axvspan(chosen["tau_inicio"], chosen["tau_fim"], color="#d62728", alpha=0.12)
-    ax1.set_xlabel("tau")
-    ax1.set_ylabel("numero de grupos no BSAS")
-    ax1.set_title(f"{dataset_name}: curva k(tau) do BSAS")
-    ax1.legend(loc="upper right")
+    ax1.set_xlabel("tau", fontsize=13)
+    ax1.set_ylabel("numero de grupos no BSAS", fontsize=13)
+    ax1.set_title(f"{dataset_name}: curva k(tau) do BSAS", fontsize=15, pad=8)
+    ax1.tick_params(axis="both", labelsize=11)
+    ax1.legend(loc="upper right", fontsize=11)
 
     ax2 = ax1.twinx()
     ax2.plot(curve["tau"], curve["abs_dk_dtau"], color="#444444", alpha=0.45, linewidth=1.4)
-    ax2.set_ylabel("|derivada numerica|")
+    ax2.set_ylabel("|derivada numerica|", fontsize=13)
+    ax2.tick_params(axis="both", labelsize=11)
 
+    save_figure(fig, f"{dataset_name.lower()}_tau.png")
     plt.show()
 
 
@@ -758,7 +790,7 @@ for dataset_name, bunch in DATASETS.items():
         min_shared=cfg["snn_min_shared"],
     )
     print(
-        "KNN/SNN:",
+        "KNN:",
         f"k={knn_info['k']},",
         f"min_shared={knn_info['min_shared']},",
         f"arestas={knn_info['accepted_edges']},",
@@ -768,7 +800,7 @@ for dataset_name, bunch in DATASETS.items():
     labels_by_method = {
         "BSAS -> K-Means": bsas_kmeans_labels,
         "Parzen": parzen_labels,
-        "KNN/SNN": knn_labels,
+        "KNN": knn_labels,
     }
 
     print("\nMetricas de apoio:")
@@ -804,7 +836,7 @@ for dataset_name, bunch in DATASETS.items():
 # - O grafico de densidade do Parzen mostra, em PCA 2D, onde a funcao estimada
 #   possui vales e regioes de maior concentracao. Os pontos coloridos permitem
 #   comparar esses picos com os grupos encontrados.
-# - O metodo KNN/SNN interpreta agrupamentos como componentes de um grafo local.
+# - O metodo KNN interpreta agrupamentos como componentes de um grafo local.
 #   Pontos sao conectados apenas quando compartilham vizinhancas semelhantes,
 #   o que reduz ligacoes fracas entre grupos proximos.
 # - Iris geralmente mostra uma classe bem separada e duas classes parcialmente
